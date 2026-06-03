@@ -5,6 +5,10 @@ metadata:
   namespace: grocery-aid
   labels:
     app: grocery-aid
+  annotations:
+    # Restart the pod when the Infisical operator updates
+    # grocery-aid-app-secrets (SECRET_KEY_BASE is read at boot).
+    secrets.infisical.com/auto-reload: "true"
 spec:
   replicas: 1
   selector:
@@ -38,7 +42,8 @@ spec:
             - name: PHX_HOST
               value: grocery-aid.inevitable.fyi
           envFrom:
-            # SECRET_KEY_BASE (created out of band — see secret.yaml).
+            # SECRET_KEY_BASE — materialized from Infisical by the operator
+            # (see infisicalsecret.yaml).
             - secretRef:
                 name: grocery-aid-app-secrets
           ports:

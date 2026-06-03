@@ -3,10 +3,12 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - postgres.yaml
-  # secret.yaml is a template only — the real `grocery-aid-app-secrets`
-  # Secret (SECRET_KEY_BASE) is created out of band via
-  # `kubectl create secret generic`. Not included here so Flux doesn't
-  # overwrite the live value.
+  # Runtime secrets come from the self-hosted Infisical (magpie). The operator
+  # authenticates with the SOPS-encrypted machine-identity creds and
+  # materializes the `grocery-aid-app-secrets` Secret (SECRET_KEY_BASE) the
+  # Deployment consumes. DATABASE_URL comes from CNPG's `grocery-aid-pg-app`.
+  - grocery-aid-infisical-auth.enc.yaml
+  - infisicalsecret.yaml
   - deployment.yaml
   - service.yaml
   - ingressroute.yaml

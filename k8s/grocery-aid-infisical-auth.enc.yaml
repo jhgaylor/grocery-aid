@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: grocery-aid-infisical-auth
+    namespace: grocery-aid
+type: Opaque
+stringData:
+    clientId: ENC[AES256_GCM,data:6lrIQXebtmy6TgfS7Q9z2csZH2e4MWaO7mADTJYImpVdXylD,iv:ZjlhqiAbsxLlgsiQL6agUXbYcA+T5KHqkrX6erSvA7M=,tag:0RMbJrfZYa+y4qB4+BBnxA==,type:str]
+    clientSecret: ENC[AES256_GCM,data:p6cszbogFVLA6t3KHAt5bkjLvux/wmPM3t1N1ZRo+bBzfhp2ZuUEQYXK0diCpr6Hla3ToL8VLKFy0NDuUu9elQ==,iv:uwhaNn9PHlX9HVnDUzHZhDD1xc67/qdyd+OvVMqHyhw=,tag:0XlIqEeXQvC/H6NF8LiFFA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBMSjJ5RHFEVHpSb3VtSFEw
+            enFEMnhsUFZDNE9UR3RoU1hJQTd4SWtjNzFNCm00ZDVaMWYyTWs0TmRwMk45dGdj
+            eHVGMmI4bWpMYXVBT1JyNGx6ZEFZTjgKLS0tIHVRS1J0czE2eHphSStJcUlWLzQv
+            UFBHUUJFUVJ6RkFqYXRqNnZRWWM0QkEKyNxzYvyadW2weDMLNVJyfUNARDTjIo3s
+            MXAw2KU+/xUqM1aFlS3kGkAxK2S4vGuJwqUFsyFaJBlEaTnBchVimQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1gqdqq7uagezyew5uvhylgcasuntmltqx3mdxmwa6es5k393hg3ns4fsyrt
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-06-03T21:14:32Z"
+    mac: ENC[AES256_GCM,data:BrSUxtM2zNKunTXY3vemA0pLQnuv1MbbQmjxmuX47c8EJEyHC0tOiP6WYhitOZxwucA3oarbr90Euwer8Sb6gAZcFM3JIjo+LSAkotvKjS2/FBHuXA1SkFq9EQ2mlO+pMb5ReglIx+g/xrOAF9I5nvLzv9DAwbgbh9yecSUCIgc=,iv:TNvmneY5W4+LQrjd31QMBVSML/pEKtK7B6HOJfuREng=,tag:zpJVynhzwd2m1xXySES/jA==,type:str]
+    version: 3.13.0
