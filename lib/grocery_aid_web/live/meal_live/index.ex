@@ -3,6 +3,8 @@ defmodule GroceryAidWeb.MealLive.Index do
 
   alias GroceryAid.Meals
 
+  @sorts [{"Name", "name"}, {"Rating", "rating"}, {"Recently made", "recent"}]
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -11,11 +13,33 @@ defmodule GroceryAidWeb.MealLive.Index do
         Meals
         <:subtitle>The dishes you like — your rotation.</:subtitle>
         <:actions>
+          <.button navigate={~p"/meals/import"}>
+            <.icon name="hero-arrow-down-tray" /> Import from URL
+          </.button>
           <.button variant="primary" navigate={~p"/meals/new"}>
             <.icon name="hero-plus" /> New Meal
           </.button>
         </:actions>
       </.header>
+
+      <form phx-change="filter" class="flex flex-wrap items-end gap-3 mb-2">
+        <label class="form-control">
+          <span class="label-text text-xs">Tag</span>
+          <select name="tag" class="select select-sm select-bordered">
+            <option value="" selected={@tag == ""}>All tags</option>
+            <option :for={t <- @all_tags} value={t} selected={@tag == t}>{t}</option>
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Sort by</span>
+          <select name="sort" class="select select-sm select-bordered">
+            <option :for={{label, val} <- sorts()} value={val} selected={@sort == val}>
+              {label}
+            </option>
+          </select>
+        </label>
+        <span class="text-sm opacity-60">{@count} meal{if @count == 1, do: "", else: "s"}</span>
+      </form>
 
       <.table
         id="meals"
@@ -27,6 +51,7 @@ defmodule GroceryAidWeb.MealLive.Index do
         <:col :let={{_id, meal}} label="Rating">
           <span :if={meal.rating}>{String.duplicate("★", meal.rating)}</span>
         </:col>
+        <:col :let={{_id, meal}} label="Last made">{meal.last_made_on}</:col>
         <:col :let={{_id, meal}} label="Tags">
           <span :for={tag <- meal.tags} class="badge badge-sm badge-outline mr-1">{tag.name}</span>
         </:col>
@@ -53,19 +78,35 @@ defmodule GroceryAidWeb.MealLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Listing Meals")
-     |> stream(:meals, list_meals())}
+     |> assign(:page_title, "Meals")
+     |> assign(:all_tags, Enum.map(Meals.list_tags(), & &1.name))
+     |> assign(:tag, "")
+     |> assign(:sort, "name")
+     |> load_meals()}
   end
 
   @impl true
+  def handle_event("filter", %{"tag" => tag, "sort" => sort}, socket) do
+    {:noreply, socket |> assign(tag: tag, sort: sort) |> load_meals()}
+  end
+
   def handle_event("delete", %{"id" => id}, socket) do
     meal = Meals.get_meal!(id)
     {:ok, _} = Meals.delete_meal(meal)
-
-    {:noreply, stream_delete(socket, :meals, meal)}
+    {:noreply, socket |> stream_delete(:meals, meal) |> assign(:count, socket.assigns.count - 1)}
   end
 
-  defp list_meals() do
-    Meals.list_meals()
+  defp load_meals(socket) do
+    meals = Meals.list_meals(tag: socket.assigns.tag, sort: sort_atom(socket.assigns.sort))
+
+    socket
+    |> assign(:count, length(meals))
+    |> stream(:meals, meals, reset: true)
   end
+
+  defp sort_atom("rating"), do: :rating
+  defp sort_atom("recent"), do: :recent
+  defp sort_atom(_), do: :name
+
+  defp sorts, do: @sorts
 end

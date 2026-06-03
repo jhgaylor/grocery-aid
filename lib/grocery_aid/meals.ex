@@ -9,49 +9,61 @@ defmodule GroceryAid.Meals do
   alias GroceryAid.Meals.Meal
 
   @doc """
-  Returns the list of meals.
-
-  ## Examples
-
-      iex> list_meals()
-      [%Meal{}, ...]
-
+  Lists meals (tags preloaded). Options:
+    * `:tag`  — only meals carrying this tag name
+    * `:sort` — `:name` (default), `:rating` (best first), `:recent` (most
+      recently made first, never-made last)
   """
-  def list_meals do
-    Meal
-    |> order_by(asc: :name)
-    |> preload(:tags)
+  def list_meals(opts \\ []) do
+    query = from(m in Meal, distinct: true, preload: [:tags])
+
+    query =
+      case opts[:tag] do
+        tag when is_binary(tag) and tag != "" ->
+          from m in query, join: t in assoc(m, :tags), where: t.name == ^tag
+
+        _ ->
+          query
+      end
+
+    query
+    |> sort_meals(opts[:sort])
     |> Repo.all()
   end
 
-  @doc """
-  Gets a single meal.
+  defp sort_meals(q, :rating),
+    do: from(m in q, order_by: [desc_nulls_last: m.rating, asc: m.name])
 
-  Raises `Ecto.NoResultsError` if the Meal does not exist.
+  defp sort_meals(q, :recent),
+    do: from(m in q, order_by: [desc_nulls_last: m.last_made_on, asc: m.name])
 
-  ## Examples
+  defp sort_meals(q, _), do: from(m in q, order_by: [asc: m.name])
 
-      iex> get_meal!(123)
-      %Meal{}
+  @doc "Stamps a meal as made on the given date (defaults to today)."
+  def mark_made(%Meal{} = meal, date \\ Date.utc_today()) do
+    update_meal(meal, %{last_made_on: date})
+  end
 
-      iex> get_meal!(456)
-      ** (Ecto.NoResultsError)
-
-  """
+  @doc "Counts all meals."
   def count_meals, do: Repo.aggregate(Meal, :count)
 
   @doc """
   Returns up to `n` random meals (with tags preloaded) — the antidote to
   "I always eat the same three things." Powers the dashboard suggestion.
+  Optionally restricted to meals carrying `tag`.
   """
-  def suggest_meals(n \\ 3) do
-    Meal
-    |> order_by(fragment("RANDOM()"))
-    |> limit(^n)
-    |> preload(:tags)
-    |> Repo.all()
+  def suggest_meals(n \\ 3, tag \\ nil) do
+    query = from(m in Meal, order_by: fragment("RANDOM()"), limit: ^n, preload: [:tags])
+
+    query =
+      if is_binary(tag) and tag != "",
+        do: from(m in query, join: t in assoc(m, :tags), where: t.name == ^tag),
+        else: query
+
+    Repo.all(query)
   end
 
+  @doc "Gets a single meal. Raises `Ecto.NoResultsError` if it does not exist."
   def get_meal!(id), do: Repo.get!(Meal, id)
 
   @doc """
@@ -155,6 +167,33 @@ defmodule GroceryAid.Meals do
     MealIngredient.changeset(mi, attrs)
   end
 
+  @doc """
+  Creates a meal from an imported recipe in one transaction: the meal itself,
+  then one recipe line per `ingredient_lines` entry (`%{name, quantity, unit}`),
+  matching/creating each ingredient by name. Bad lines are skipped, not fatal.
+  """
+  def create_imported_meal(meal_attrs, ingredient_lines) do
+    Repo.transaction(fn ->
+      meal =
+        case create_meal(meal_attrs) do
+          {:ok, meal} -> meal
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+
+      Enum.each(ingredient_lines, fn line ->
+        with {:ok, ingredient} <- GroceryAid.Catalog.get_or_create_ingredient(line.name) do
+          add_meal_ingredient(meal, %{
+            ingredient_id: ingredient.id,
+            quantity: line[:quantity],
+            unit: line[:unit]
+          })
+        end
+      end)
+
+      meal
+    end)
+  end
+
   ## Tags --------------------------------------------------------------------
 
   alias GroceryAid.Meals.{MealTag, Tag}
@@ -207,49 +246,95 @@ defmodule GroceryAid.Meals do
   ## Shopping list -----------------------------------------------------------
 
   @doc """
-  Given a list of meal ids, aggregates their ingredients into a shopping
-  list grouped by store. For each ingredient we attach the cheapest known
-  store_item (if any) so the list can suggest where to buy it. Ingredients
-  with no known store land in an "Unassigned" bucket.
+  Given a list of meal ids, aggregates their recipe lines into a shopping
+  list grouped by store. Quantities for the same ingredient are summed per
+  unit (you can't add "2 cups" to "1 lb", so each unit is tracked separately).
+  Each ingredient also carries the cheapest known store_item so the list can
+  suggest where to buy it; ingredients with no known store land in an
+  "Unassigned" bucket.
 
-  Returns a list of `%{store: store | nil, items: [%{ingredient:, store_item:}]}`.
+  Returns `[%{store: store | nil, items: [%{ingredient:, store_item:, quantities:}]}]`
+  where `quantities` is `[%{unit: string | nil, total: Decimal}]`.
   """
   def shopping_list(meal_ids) when is_list(meal_ids) do
-    alias GroceryAid.Catalog.{Ingredient, StoreItem}
+    alias GroceryAid.Catalog.StoreItem
 
-    ingredients =
-      from(mi in MealIngredient,
-        where: mi.meal_id in ^meal_ids,
-        join: i in assoc(mi, :ingredient),
-        distinct: i.id,
-        select: i,
-        order_by: i.name
-      )
+    lines =
+      from(mi in MealIngredient, where: mi.meal_id in ^meal_ids, preload: [:ingredient])
       |> Repo.all()
 
-    ingredient_ids = Enum.map(ingredients, & &1.id)
+    by_ingredient = Enum.group_by(lines, & &1.ingredient_id)
+    ingredient_ids = Map.keys(by_ingredient)
 
     # Cheapest store_item per ingredient (nil price sorts last).
     store_items =
-      from(si in StoreItem,
-        where: si.ingredient_id in ^ingredient_ids,
-        preload: [:store]
-      )
+      from(si in StoreItem, where: si.ingredient_id in ^ingredient_ids, preload: [:store])
       |> Repo.all()
       |> Enum.group_by(& &1.ingredient_id)
       |> Map.new(fn {ing_id, items} ->
-        cheapest =
-          Enum.min_by(items, fn si -> si.price || Decimal.new("999999999") end, fn -> nil end)
-
-        {ing_id, cheapest}
+        {ing_id, Enum.min_by(items, &(&1.price || Decimal.new("999999999")), fn -> nil end)}
       end)
 
-    ingredients
-    |> Enum.map(fn %Ingredient{} = ing ->
-      %{ingredient: ing, store_item: Map.get(store_items, ing.id)}
+    by_ingredient
+    |> Enum.map(fn {ing_id, ing_lines} ->
+      %{
+        ingredient: hd(ing_lines).ingredient,
+        store_item: Map.get(store_items, ing_id),
+        quantities: aggregate_quantities(ing_lines)
+      }
     end)
+    |> Enum.sort_by(& &1.ingredient.name)
     |> Enum.group_by(fn %{store_item: si} -> si && si.store end)
     |> Enum.map(fn {store, items} -> %{store: store, items: items} end)
     |> Enum.sort_by(fn %{store: store} -> (store && store.name) || "~" end)
+  end
+
+  @doc """
+  Renders aggregated quantities (`[%{unit, total}]`) as a short string like
+  `"2 cups + 1 tbsp"`, or `""` when nothing has a quantity.
+  """
+  def format_quantities([]), do: ""
+
+  def format_quantities(quantities) do
+    quantities
+    |> Enum.map(fn %{unit: unit, total: total} ->
+      [format_decimal(total), unit] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" ")
+    end)
+    |> Enum.join(" + ")
+  end
+
+  defp format_decimal(%Decimal{} = d), do: d |> Decimal.normalize() |> Decimal.to_string(:normal)
+  defp format_decimal(other), do: to_string(other)
+
+  @doc """
+  Formats a `shopping_list/1` result as plaintext grouped by store — for the
+  "copy to take to the store" affordance.
+  """
+  def shopping_list_text(groups) do
+    groups
+    |> Enum.map(fn %{store: store, items: items} ->
+      header = (store && store.name) || "No store assigned"
+
+      rows =
+        Enum.map(items, fn item ->
+          qty = format_quantities(item.quantities)
+          "- " <> if(qty == "", do: "", else: qty <> " ") <> item.ingredient.name
+        end)
+
+      Enum.join([header | rows], "\n")
+    end)
+    |> Enum.join("\n\n")
+  end
+
+  # Sum quantities per unit; lines without a quantity contribute nothing.
+  defp aggregate_quantities(lines) do
+    lines
+    |> Enum.filter(& &1.quantity)
+    |> Enum.group_by(& &1.unit)
+    |> Enum.map(fn {unit, ls} ->
+      total = Enum.reduce(ls, Decimal.new(0), &Decimal.add(&2, &1.quantity))
+      %{unit: unit, total: total}
+    end)
+    |> Enum.sort_by(&(&1.unit || ""))
   end
 end

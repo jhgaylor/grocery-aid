@@ -37,6 +37,22 @@ defmodule GroceryAid.Catalog do
   """
   def count_ingredients, do: Repo.aggregate(Ingredient, :count)
 
+  @doc """
+  Fetches an ingredient by (case-insensitive) name, creating a bare one if it
+  doesn't exist. Used by recipe import to land parsed ingredient names in the
+  catalog without making the user pre-create each one.
+  """
+  def get_or_create_ingredient(name) when is_binary(name) do
+    trimmed = String.trim(name)
+
+    case Repo.one(
+           from i in Ingredient, where: fragment("lower(?)", i.name) == ^String.downcase(trimmed)
+         ) do
+      nil -> create_ingredient(%{name: trimmed})
+      %Ingredient{} = ing -> {:ok, ing}
+    end
+  end
+
   def get_ingredient!(id), do: Repo.get!(Ingredient, id)
 
   @doc """

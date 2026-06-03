@@ -10,7 +10,8 @@ defmodule GroceryAidWeb.ShoppingListLive do
      |> assign(:page_title, "Shopping List")
      |> assign(:meals, Meals.list_meals())
      |> assign(:selected, MapSet.new())
-     |> assign(:groups, [])}
+     |> assign(:groups, [])
+     |> assign(:list_text, "")}
   end
 
   @impl true
@@ -37,6 +38,7 @@ defmodule GroceryAidWeb.ShoppingListLive do
     socket
     |> assign(:selected, selected)
     |> assign(:groups, groups)
+    |> assign(:list_text, Meals.shopping_list_text(groups))
   end
 
   @impl true
@@ -81,7 +83,17 @@ defmodule GroceryAidWeb.ShoppingListLive do
         </div>
 
         <div>
-          <h2 class="font-semibold mb-2">Grocery list</h2>
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-semibold">Grocery list</h2>
+            <button
+              :if={@groups != []}
+              type="button"
+              class="btn btn-xs btn-ghost"
+              onclick="navigator.clipboard.writeText(document.getElementById('list-text').value); this.querySelector('span').textContent='Copied!'"
+            >
+              <.icon name="hero-clipboard-document" class="size-3" /> <span>Copy</span>
+            </button>
+          </div>
           <p :if={@groups == []} class="opacity-70">Select meals to build your list.</p>
 
           <div :for={group <- @groups} class="card bg-base-200 mb-3">
@@ -93,6 +105,9 @@ defmodule GroceryAidWeb.ShoppingListLive do
               <ul class="divide-y divide-base-300">
                 <li :for={item <- group.items} class="py-1.5 flex items-center justify-between">
                   <span>
+                    <span :if={fmt(item.quantities) != ""} class="font-medium">
+                      {fmt(item.quantities)}
+                    </span>
                     {item.ingredient.name}
                     <span :if={item.store_item && item.store_item.aisle} class="text-xs opacity-60">
                       · aisle {item.store_item.aisle}
@@ -116,9 +131,14 @@ defmodule GroceryAidWeb.ShoppingListLive do
               </ul>
             </div>
           </div>
+
+          <%!-- Hidden source for the Copy button (also selectable as a fallback). --%>
+          <textarea id="list-text" class="sr-only" readonly>{@list_text}</textarea>
         </div>
       </div>
     </Layouts.app>
     """
   end
+
+  defp fmt(quantities), do: Meals.format_quantities(quantities)
 end

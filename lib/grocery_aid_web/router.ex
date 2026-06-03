@@ -30,6 +30,7 @@ defmodule GroceryAidWeb.Router do
     live "/stores/:id/edit", StoreLive.Form, :edit
 
     live "/meals", MealLive.Index, :index
+    live "/meals/import", RecipeImportLive, :new
     live "/meals/new", MealLive.Form, :new
     live "/meals/:id", MealLive.Show, :show
     live "/meals/:id/edit", MealLive.Form, :edit

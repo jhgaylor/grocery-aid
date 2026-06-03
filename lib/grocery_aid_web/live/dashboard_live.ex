@@ -10,7 +10,11 @@ defmodule GroceryAidWeb.DashboardLive do
 
   @impl true
   def handle_event("reshuffle", _params, socket) do
-    {:noreply, assign(socket, :suggestions, Meals.suggest_meals(3))}
+    {:noreply, assign(socket, :suggestions, Meals.suggest_meals(3, socket.assigns.tag))}
+  end
+
+  def handle_event("suggest_tag", %{"tag" => tag}, socket) do
+    {:noreply, socket |> assign(:tag, tag) |> assign(:suggestions, Meals.suggest_meals(3, tag))}
   end
 
   defp assign_dashboard(socket) do
@@ -19,6 +23,8 @@ defmodule GroceryAidWeb.DashboardLive do
     |> assign(:meal_count, Meals.count_meals())
     |> assign(:ingredient_count, Catalog.count_ingredients())
     |> assign(:store_count, Catalog.count_stores())
+    |> assign(:all_tags, Enum.map(Meals.list_tags(), & &1.name))
+    |> assign(:tag, "")
     |> assign(:suggestions, Meals.suggest_meals(3))
   end
 
@@ -52,11 +58,19 @@ defmodule GroceryAidWeb.DashboardLive do
 
       <div class="card bg-base-200 mt-4">
         <div class="card-body">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
             <h2 class="card-title">Tonight's suggestions</h2>
-            <button class="btn btn-sm btn-ghost" phx-click="reshuffle">
-              <.icon name="hero-arrow-path" class="size-4" /> Reshuffle
-            </button>
+            <div class="flex items-center gap-2">
+              <form :if={@all_tags != []} phx-change="suggest_tag">
+                <select name="tag" class="select select-sm select-bordered">
+                  <option value="" selected={@tag == ""}>Any tag</option>
+                  <option :for={t <- @all_tags} value={t} selected={@tag == t}>{t}</option>
+                </select>
+              </form>
+              <button class="btn btn-sm btn-ghost" phx-click="reshuffle">
+                <.icon name="hero-arrow-path" class="size-4" /> Reshuffle
+              </button>
+            </div>
           </div>
 
           <ul :if={@suggestions != []} class="divide-y divide-base-300">

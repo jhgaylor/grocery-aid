@@ -15,6 +15,9 @@ defmodule GroceryAidWeb.MealLive.Show do
           <.button navigate={~p"/meals"}>
             <.icon name="hero-arrow-left" />
           </.button>
+          <.button phx-click="mark_made">
+            <.icon name="hero-check-circle" class="size-4" /> Made it today
+          </.button>
           <.button variant="primary" navigate={~p"/meals/#{@meal}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit meal
           </.button>
@@ -112,6 +115,11 @@ defmodule GroceryAidWeb.MealLive.Show do
   def handle_event("remove_ingredient", %{"id" => id}, socket) do
     id |> Meals.get_meal_ingredient!() |> Meals.delete_meal_ingredient()
     {:noreply, socket |> put_flash(:info, "Ingredient removed") |> load_meal()}
+  end
+
+  def handle_event("mark_made", _params, socket) do
+    {:ok, _} = Meals.mark_made(socket.assigns.meal)
+    {:noreply, socket |> put_flash(:info, "Marked as made today") |> load_meal()}
   end
 
   defp load_meal(socket) do
