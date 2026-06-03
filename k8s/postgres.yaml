@@ -1,0 +1,39 @@
+# Postgres backend for grocery-aid. CNPG auto-generates the Secret
+# `grocery-aid-pg-app` with `host`, `port`, `username`, `password`,
+# `dbname`, `uri` keys — the Deployment consumes `uri` as DATABASE_URL.
+#
+# `standard` image variant pins postgres 17 with pgvector preinstalled.
+# Recipe import and "what should I buy" suggestions are likely to grow
+# into ingredient/recipe embeddings, so enabling vector now is the
+# lower-regret call (guild + mem0 made the same choice).
+#
+# Single instance — Longhorn replicates the volume across nodes, which
+# is enough durability for a personal cluster. Bump `instances` to 3
+# only if Postgres-level HA matters more than the storage cost.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: grocery-aid-pg
+  namespace: grocery-aid
+spec:
+  instances: 1
+
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.6-standard-trixie
+
+  bootstrap:
+    initdb:
+      database: grocery_aid_app
+      owner: grocery_aid
+      postInitTemplateSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+
+  storage:
+    storageClass: longhorn
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi

@@ -1,0 +1,47 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grocery-aid
+  namespace: grocery-aid
+  labels:
+    app: grocery-aid
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: "Host(`grocery-aid.inevitable.fyi`)"
+      kind: Rule
+      middlewares:
+        # Personal app with personal data — gate behind GitHub login.
+        # Only the github-user whitelist in oauth2-proxy (jhgaylor) gets in;
+        # the cookie is scoped to .inevitable.fyi so it's SSO across apps.
+        # Remove this middleware to make the app publicly accessible.
+        - name: github-auth
+          namespace: default
+      services:
+        - name: grocery-aid
+          port: 80
+  tls:
+    secretName: grocery-aid-tls
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grocery-aid-http
+  namespace: grocery-aid
+  labels:
+    app: grocery-aid
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: "Host(`grocery-aid.inevitable.fyi`)"
+      kind: Rule
+      middlewares:
+        # redirect-https lives in the default namespace; cross-namespace
+        # refs need the namespace qualifier.
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: grocery-aid
+          port: 80

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grocery-aid
+  namespace: grocery-aid
+  labels:
+    app: grocery-aid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grocery-aid
+  template:
+    metadata:
+      labels:
+        app: grocery-aid
+    spec:
+      containers:
+        - name: grocery-aid
+          # `:latest` is mutable — the build workflow rebuilds on every
+          # push to main. imagePullPolicy: Always forces a manifest check
+          # on pod start so `kubectl rollout restart` picks up the new
+          # digest. Swap to a pinned tag once releases land.
+          image: ghcr.io/jhgaylor/grocery-aid:latest
+          imagePullPolicy: Always
+          env:
+            # CNPG auto-generates the `grocery-aid-pg-app` Secret on
+            # Cluster bootstrap. `uri` is the postgres://… URL Ecto reads.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: grocery-aid-pg-app
+                  key: uri
+            - name: PHX_SERVER
+              value: "true"
+            - name: PORT
+              value: "4000"
+            - name: PHX_HOST
+              value: grocery-aid.inevitable.fyi
+          envFrom:
+            # SECRET_KEY_BASE (created out of band — see secret.yaml).
+            - secretRef:
+                name: grocery-aid-app-secrets
+          ports:
+            - containerPort: 4000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
