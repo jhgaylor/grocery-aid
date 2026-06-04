@@ -2,7 +2,7 @@ defmodule GroceryAidWeb.RecipeImportLive do
   use GroceryAidWeb, :live_view
 
   alias GroceryAid.{Catalog, Meals}
-  alias GroceryAid.Recipes.Importer
+  alias GroceryAid.Recipes.{Importer, Normalizer}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -11,26 +11,24 @@ defmodule GroceryAidWeb.RecipeImportLive do
      |> assign(:page_title, "Import Recipe")
      |> assign(:step, :url)
      |> assign(:url, "")
-     |> assign(:loading, false)
      |> assign(:parsed, nil)
-     |> assign(:existing, MapSet.new())}
+     |> assign(:lines, [])
+     |> assign(:enhanced, false)}
   end
 
   @impl true
   def handle_event("fetch", %{"url" => url}, socket) do
     case Importer.import_from_url(url) do
       {:ok, parsed} ->
-        existing =
-          Catalog.list_ingredients()
-          |> Enum.map(&String.downcase(&1.name))
-          |> MapSet.new()
+        {lines, enhanced} = enhance(parsed)
 
         {:noreply,
          socket
          |> assign(:step, :preview)
          |> assign(:url, url)
          |> assign(:parsed, parsed)
-         |> assign(:existing, existing)}
+         |> assign(:lines, lines)
+         |> assign(:enhanced, enhanced)}
 
       {:error, reason} ->
         {:noreply, socket |> assign(:url, url) |> put_flash(:error, reason)}
@@ -38,7 +36,7 @@ defmodule GroceryAidWeb.RecipeImportLive do
   end
 
   def handle_event("back", _params, socket) do
-    {:noreply, assign(socket, step: :url, parsed: nil)}
+    {:noreply, assign(socket, step: :url, parsed: nil, lines: [])}
   end
 
   def handle_event("create", %{"meal" => meal_params} = params, socket) do
@@ -47,14 +45,8 @@ defmodule GroceryAidWeb.RecipeImportLive do
       |> Map.get("lines", %{})
       |> Map.values()
       |> Enum.filter(&(&1["include"] == "true"))
-      |> Enum.map(fn l ->
-        %{
-          name: String.trim(l["name"] || ""),
-          quantity: blank_to_nil(l["quantity"]),
-          unit: blank_to_nil(l["unit"])
-        }
-      end)
-      |> Enum.reject(&(&1.name == ""))
+      |> Enum.map(&to_line/1)
+      |> Enum.reject(&is_nil/1)
 
     case Meals.create_imported_meal(meal_params, lines) do
       {:ok, meal} ->
@@ -66,6 +58,39 @@ defmodule GroceryAidWeb.RecipeImportLive do
       {:error, _changeset} ->
         {:noreply,
          put_flash(socket, :error, "Couldn't save — does a meal with that name already exist?")}
+    end
+  end
+
+  # Run the optional LLM normalization; fall back to the deterministic parse.
+  defp enhance(parsed) do
+    raw_lines = Enum.map(parsed.ingredient_lines, & &1.raw)
+
+    case Normalizer.normalize(raw_lines, Catalog.list_ingredients()) do
+      {:ok, enriched} -> {enriched, true}
+      {:error, _} -> {Enum.map(parsed.ingredient_lines, &deterministic_line/1), false}
+    end
+  end
+
+  defp deterministic_line(line) do
+    %{
+      raw: line.raw,
+      quantity: line.quantity,
+      unit: line.unit,
+      name: line.name,
+      category: nil,
+      matched_id: nil,
+      matched_name: nil
+    }
+  end
+
+  defp to_line(l) do
+    name = String.trim(l["name"] || "")
+    base = %{quantity: blank_to_nil(l["quantity"]), unit: blank_to_nil(l["unit"])}
+
+    case blank_to_nil(l["matched_id"]) do
+      nil when name == "" -> nil
+      nil -> Map.merge(base, %{name: name, category: blank_to_nil(l["category"])})
+      id -> Map.put(base, :ingredient_id, String.to_integer(id))
     end
   end
 
@@ -131,17 +156,21 @@ defmodule GroceryAidWeb.RecipeImportLive do
           <div class="card bg-base-200 mt-4">
             <div class="card-body">
               <h2 class="card-title text-base">
-                Ingredients
-                <span class="badge badge-sm">{length(@parsed.ingredient_lines)} found</span>
+                Ingredients <span class="badge badge-sm">{length(@lines)} found</span>
+                <span :if={@enhanced} class="badge badge-sm badge-primary badge-outline gap-1">
+                  <.icon name="hero-sparkles" class="size-3" /> AI-matched
+                </span>
               </h2>
               <p class="text-xs opacity-60">
-                Untick lines that aren't real ingredients ("salt to taste"). Names you can edit;
+                Untick lines that aren't real ingredients.
+                <span class="badge badge-xs badge-info badge-outline">→ name</span>
+                means it matched an ingredient you already have;
                 <span class="badge badge-xs badge-success badge-outline">new</span>
                 ones get added to your catalog.
               </p>
 
               <div
-                :for={{line, idx} <- Enum.with_index(@parsed.ingredient_lines)}
+                :for={{line, idx} <- Enum.with_index(@lines)}
                 class="flex items-center gap-2 py-1"
               >
                 <input
@@ -153,6 +182,8 @@ defmodule GroceryAidWeb.RecipeImportLive do
                 />
                 <input type="hidden" name={"lines[#{idx}][quantity]"} value={fmt_qty(line.quantity)} />
                 <input type="hidden" name={"lines[#{idx}][unit]"} value={line.unit} />
+                <input type="hidden" name={"lines[#{idx}][matched_id]"} value={line.matched_id} />
+                <input type="hidden" name={"lines[#{idx}][category]"} value={line.category} />
                 <span class="text-sm opacity-70 w-24 shrink-0 text-right">
                   {fmt_qty(line.quantity)} {line.unit}
                 </span>
@@ -162,11 +193,14 @@ defmodule GroceryAidWeb.RecipeImportLive do
                   value={line.name}
                   class="input input-sm input-bordered flex-1"
                 />
+                <span :if={line.matched_id} class="badge badge-xs badge-info badge-outline shrink-0">
+                  → {line.matched_name}
+                </span>
                 <span
-                  :if={new?(line.name, @existing)}
-                  class="badge badge-xs badge-success badge-outline"
+                  :if={is_nil(line.matched_id)}
+                  class="badge badge-xs badge-success badge-outline shrink-0"
                 >
-                  new
+                  new{if line.category, do: " · #{line.category}"}
                 </span>
               </div>
             </div>
@@ -192,8 +226,6 @@ defmodule GroceryAidWeb.RecipeImportLive do
     </Layouts.app>
     """
   end
-
-  defp new?(name, existing), do: not MapSet.member?(existing, String.downcase(String.trim(name)))
 
   defp fmt_qty(nil), do: ""
   defp fmt_qty(%Decimal{} = d), do: d |> Decimal.normalize() |> Decimal.to_string(:normal)

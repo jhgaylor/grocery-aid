@@ -38,17 +38,18 @@ defmodule GroceryAid.Catalog do
   def count_ingredients, do: Repo.aggregate(Ingredient, :count)
 
   @doc """
-  Fetches an ingredient by (case-insensitive) name, creating a bare one if it
-  doesn't exist. Used by recipe import to land parsed ingredient names in the
-  catalog without making the user pre-create each one.
+  Fetches an ingredient by (case-insensitive) name, creating one if it doesn't
+  exist. `attrs` (e.g. `%{category: "produce"}`) are applied only on create.
+  Used by recipe import to land parsed ingredient names in the catalog without
+  making the user pre-create each one.
   """
-  def get_or_create_ingredient(name) when is_binary(name) do
+  def get_or_create_ingredient(name, attrs \\ %{}) when is_binary(name) do
     trimmed = String.trim(name)
 
     case Repo.one(
            from i in Ingredient, where: fragment("lower(?)", i.name) == ^String.downcase(trimmed)
          ) do
-      nil -> create_ingredient(%{name: trimmed})
+      nil -> create_ingredient(Map.merge(attrs, %{name: trimmed}))
       %Ingredient{} = ing -> {:ok, ing}
     end
   end

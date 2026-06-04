@@ -23,6 +23,14 @@ end
 config :grocery_aid, GroceryAidWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# OpenRouter — optional LLM pass that normalizes imported recipe ingredients
+# and matches them to the catalog. Read in all envs so dev can exercise it
+# when a key is present; absence just disables the enhancement (the importer
+# falls back to its deterministic heuristic parse).
+config :grocery_aid,
+  openrouter_api_key: System.get_env("OPENROUTER_API_KEY"),
+  openrouter_model: System.get_env("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

@@ -169,8 +169,10 @@ defmodule GroceryAid.Meals do
 
   @doc """
   Creates a meal from an imported recipe in one transaction: the meal itself,
-  then one recipe line per `ingredient_lines` entry (`%{name, quantity, unit}`),
-  matching/creating each ingredient by name. Bad lines are skipped, not fatal.
+  then one recipe line per `ingredient_lines` entry. Each entry is a map with
+  `:quantity`/`:unit` plus EITHER `:ingredient_id` (a confirmed match to an
+  existing catalog ingredient) OR `:name` (+ optional `:category`) to match or
+  create by name. Bad lines are skipped, not fatal.
   """
   def create_imported_meal(meal_attrs, ingredient_lines) do
     Repo.transaction(fn ->
@@ -181,7 +183,7 @@ defmodule GroceryAid.Meals do
         end
 
       Enum.each(ingredient_lines, fn line ->
-        with {:ok, ingredient} <- GroceryAid.Catalog.get_or_create_ingredient(line.name) do
+        with {:ok, ingredient} <- resolve_ingredient(line) do
           add_meal_ingredient(meal, %{
             ingredient_id: ingredient.id,
             quantity: line[:quantity],
@@ -193,6 +195,16 @@ defmodule GroceryAid.Meals do
       meal
     end)
   end
+
+  defp resolve_ingredient(%{ingredient_id: id}) when is_integer(id),
+    do: {:ok, GroceryAid.Catalog.get_ingredient!(id)}
+
+  defp resolve_ingredient(%{name: name} = line) when is_binary(name) and name != "" do
+    attrs = if line[:category], do: %{category: line.category}, else: %{}
+    GroceryAid.Catalog.get_or_create_ingredient(name, attrs)
+  end
+
+  defp resolve_ingredient(_), do: {:error, :no_ingredient}
 
   ## Tags --------------------------------------------------------------------
 
