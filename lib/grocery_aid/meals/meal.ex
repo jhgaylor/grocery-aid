@@ -11,6 +11,7 @@ defmodule GroceryAid.Meals.Meal do
     field :cuisine, :string
     field :rating, :integer
     field :prep_minutes, :integer
+    field :servings, :integer
     field :last_made_on, :date
     field :notes, :string
 
@@ -32,6 +33,7 @@ defmodule GroceryAid.Meals.Meal do
       :cuisine,
       :rating,
       :prep_minutes,
+      :servings,
       :last_made_on,
       :notes
     ])
@@ -39,5 +41,6 @@ defmodule GroceryAid.Meals.Meal do
     |> update_change(:name, &String.trim/1)
     |> validate_inclusion(:rating, 1..5, message: "must be between 1 and 5")
     |> validate_number(:prep_minutes, greater_than_or_equal_to: 0)
+    |> validate_number(:servings, greater_than: 0)
   end
 end

@@ -28,6 +28,7 @@ defmodule GroceryAidWeb.MealLive.Form do
           options={[{"★", 1}, {"★★", 2}, {"★★★", 3}, {"★★★★", 4}, {"★★★★★", 5}]}
         />
         <.input field={@form[:prep_minutes]} type="number" label="Prep minutes" />
+        <.input field={@form[:servings]} type="number" label="Makes (servings)" />
         <.input field={@form[:last_made_on]} type="date" label="Last made on" />
         <.input
           name="tags"

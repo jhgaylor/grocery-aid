@@ -78,6 +78,7 @@ meal_specs = [
       cuisine: "Thai",
       rating: 5,
       prep_minutes: 35,
+      servings: 4,
       description: "Weeknight curry over rice."
     },
     tags: "dinner, thai, quick",
@@ -95,6 +96,7 @@ meal_specs = [
       cuisine: "Mediterranean",
       rating: 4,
       prep_minutes: 20,
+      servings: 2,
       description: "Fast vegetarian skillet."
     },
     tags: "dinner, vegetarian, quick",

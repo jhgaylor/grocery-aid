@@ -135,9 +135,15 @@ defmodule GroceryAidWeb.RecipeImportLive do
 
       <div :if={@step == :preview}>
         <.form for={%{}} id="import-form" phx-submit="create">
+          <.input name="meal[name]" value={@parsed.name} type="text" label="Meal name" />
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <.input name="meal[name]" value={@parsed.name} type="text" label="Meal name" />
             <.input name="meal[cuisine]" value={@parsed.cuisine} type="text" label="Cuisine" />
+            <.input
+              name="meal[servings]"
+              value={@parsed.servings}
+              type="number"
+              label="Makes (servings)"
+            />
           </div>
           <input type="hidden" name="meal[source_url]" value={@parsed.source_url} />
           <input

@@ -45,11 +45,45 @@ defmodule GroceryAidWeb.MealLive.Show do
         <div class="card-body">
           <h2 class="card-title">Ingredients</h2>
 
+          <div
+            :if={@meal.meal_ingredients != []}
+            class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
+          >
+            <span class="opacity-70">
+              {if @meal.servings, do: "Makes #{@meal.servings} ·", else: "Scale:"}
+            </span>
+            <div class="join">
+              <button
+                :for={f <- ["0.5", "1", "2", "3"]}
+                type="button"
+                class={["btn btn-xs join-item", scale_is?(@scale, f) && "btn-primary"]}
+                phx-click="scale_by"
+                phx-value-factor={f}
+              >
+                {if f == "0.5", do: "½×", else: "#{f}×"}
+              </button>
+            </div>
+            <form :if={@meal.servings} phx-change="scale_to" class="flex items-center gap-1">
+              <span class="opacity-70">make</span>
+              <input
+                type="number"
+                name="target"
+                value={current_target(@meal.servings, @scale)}
+                min="1"
+                class="input input-xs input-bordered w-16"
+              />
+              <span class="opacity-70">servings</span>
+            </form>
+            <span :if={scaled?(@scale)} class="badge badge-sm badge-primary badge-outline">
+              ×{format_qty(@scale)}
+            </span>
+          </div>
+
           <ul :if={@meal.meal_ingredients != []} class="divide-y divide-base-300">
             <li :for={mi <- @meal.meal_ingredients} class="py-2 flex items-center justify-between">
               <span>
                 <span :if={mi.quantity} class="font-medium">
-                  {format_qty(mi.quantity)} {mi.unit}
+                  {format_qty(scale_qty(mi.quantity, @scale))} {mi.unit}
                 </span>
                 {mi.ingredient.name}
                 <span :if={mi.notes} class="text-xs opacity-60">— {mi.notes}</span>
@@ -98,7 +132,7 @@ defmodule GroceryAidWeb.MealLive.Show do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    {:ok, socket |> assign(:meal_id, id) |> load_meal()}
+    {:ok, socket |> assign(:meal_id, id) |> assign(:scale, Decimal.new(1)) |> load_meal()}
   end
 
   @impl true
@@ -122,6 +156,28 @@ defmodule GroceryAidWeb.MealLive.Show do
     {:noreply, socket |> put_flash(:info, "Marked as made today") |> load_meal()}
   end
 
+  def handle_event("scale_by", %{"factor" => f}, socket) do
+    case Decimal.parse(f) do
+      {scale, _} -> {:noreply, assign(socket, :scale, scale)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("scale_to", %{"target" => t}, socket) do
+    servings = socket.assigns.meal.servings
+
+    scale =
+      case Integer.parse(to_string(t)) do
+        {n, _} when is_integer(servings) and servings > 0 and n > 0 ->
+          Decimal.div(Decimal.new(n), Decimal.new(servings))
+
+        _ ->
+          socket.assigns.scale
+      end
+
+    {:noreply, assign(socket, :scale, scale)}
+  end
+
   defp load_meal(socket) do
     meal = Meals.get_meal_with_details!(socket.assigns.meal_id)
     options = Catalog.list_ingredients() |> Enum.map(&{&1.name, &1.id})
@@ -135,4 +191,22 @@ defmodule GroceryAidWeb.MealLive.Show do
 
   defp format_qty(%Decimal{} = d), do: d |> Decimal.normalize() |> Decimal.to_string(:normal)
   defp format_qty(other), do: other
+
+  defp scale_qty(nil, _scale), do: nil
+  defp scale_qty(%Decimal{} = q, scale), do: Decimal.mult(q, scale)
+
+  defp scaled?(scale), do: Decimal.compare(scale, Decimal.new(1)) != :eq
+
+  # Highlight the quick button matching the current scale.
+  defp scale_is?(scale, factor) do
+    case Decimal.parse(factor) do
+      {d, _} -> Decimal.compare(scale, d) == :eq
+      :error -> false
+    end
+  end
+
+  # Current target servings = base * scale, rounded to a whole number.
+  defp current_target(servings, scale) do
+    Decimal.new(servings) |> Decimal.mult(scale) |> Decimal.round(0) |> Decimal.to_integer()
+  end
 end

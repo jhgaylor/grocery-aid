@@ -18,6 +18,7 @@ defmodule GroceryAid.Recipes.Importer do
               source_url: nil,
               cuisine: nil,
               prep_minutes: nil,
+              servings: nil,
               image: nil,
               # list of %{raw:, quantity:, unit:, name:}
               ingredient_lines: []
@@ -126,6 +127,7 @@ defmodule GroceryAid.Recipes.Importer do
       cuisine: recipe["recipeCuisine"] |> first_string(),
       prep_minutes:
         parse_duration(recipe["totalTime"] || recipe["cookTime"] || recipe["prepTime"]),
+      servings: parse_yield(recipe["recipeYield"] || recipe["yield"]),
       image: image_url(recipe["image"]),
       ingredient_lines:
         recipe
@@ -202,6 +204,23 @@ defmodule GroceryAid.Recipes.Importer do
   defp to_int(""), do: 0
   defp to_int(nil), do: 0
   defp to_int(s), do: String.to_integer(s)
+
+  @doc """
+  Extracts a serving count from a schema.org `recipeYield`, which may be a
+  number, `"8"`, `"8 servings"`, `"Serves 8"`, or a list. Returns the first
+  positive integer found, or nil.
+  """
+  def parse_yield(n) when is_integer(n) and n > 0, do: n
+  def parse_yield([h | _]), do: parse_yield(h)
+
+  def parse_yield(s) when is_binary(s) do
+    case Regex.run(~r/\d+/, s) do
+      [n] -> String.to_integer(n)
+      _ -> nil
+    end
+  end
+
+  def parse_yield(_), do: nil
 
   @frac_map %{"½" => "0.5", "¼" => "0.25", "¾" => "0.75", "⅓" => "0.333", "⅔" => "0.667"}
 

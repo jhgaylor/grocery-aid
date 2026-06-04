@@ -5,11 +5,15 @@ defmodule GroceryAidWeb.ShoppingListLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    meals = Meals.list_meals()
+
     {:ok,
      socket
      |> assign(:page_title, "Shopping List")
-     |> assign(:meals, Meals.list_meals())
+     |> assign(:meals, meals)
+     |> assign(:base_servings, Map.new(meals, &{&1.id, &1.servings}))
      |> assign(:selected, MapSet.new())
+     |> assign(:targets, %{})
      |> assign(:groups, [])
      |> assign(:list_text, "")}
   end
@@ -18,25 +22,40 @@ defmodule GroceryAidWeb.ShoppingListLive do
   def handle_event("toggle", %{"id" => id}, socket) do
     id = String.to_integer(id)
 
-    selected =
-      if MapSet.member?(socket.assigns.selected, id) do
-        MapSet.delete(socket.assigns.selected, id)
-      else
-        MapSet.put(socket.assigns.selected, id)
+    if MapSet.member?(socket.assigns.selected, id) do
+      selected = MapSet.delete(socket.assigns.selected, id)
+      {:noreply, recompute(socket, selected, Map.delete(socket.assigns.targets, id))}
+    else
+      selected = MapSet.put(socket.assigns.selected, id)
+      # default a selected meal's target to its base yield (factor 1).
+      targets = Map.put(socket.assigns.targets, id, socket.assigns.base_servings[id])
+      {:noreply, recompute(socket, selected, targets)}
+    end
+  end
+
+  def handle_event("set_servings", %{"id" => id, "value" => value}, socket) do
+    id = String.to_integer(id)
+
+    target =
+      case Integer.parse(String.trim(value)) do
+        {n, _} when n > 0 -> n
+        _ -> nil
       end
 
-    {:noreply, recompute(socket, selected)}
+    {:noreply,
+     recompute(socket, socket.assigns.selected, Map.put(socket.assigns.targets, id, target))}
   end
 
   def handle_event("clear", _params, socket) do
-    {:noreply, recompute(socket, MapSet.new())}
+    {:noreply, recompute(socket, MapSet.new(), %{})}
   end
 
-  defp recompute(socket, selected) do
-    groups = selected |> MapSet.to_list() |> Meals.shopping_list()
+  defp recompute(socket, selected, targets) do
+    groups = Meals.shopping_list(MapSet.to_list(selected), targets)
 
     socket
     |> assign(:selected, selected)
+    |> assign(:targets, targets)
     |> assign(:groups, groups)
     |> assign(:list_text, Meals.shopping_list_text(groups))
   end
@@ -63,9 +82,9 @@ defmodule GroceryAidWeb.ShoppingListLive do
           <p :if={@meals == []} class="opacity-70">
             No meals yet. <.link navigate={~p"/meals/new"} class="link">Add one</.link>.
           </p>
-          <ul class="menu bg-base-200 rounded-box w-full">
-            <li :for={meal <- @meals}>
-              <label class="flex items-center gap-3 cursor-pointer">
+          <ul class="bg-base-200 rounded-box divide-y divide-base-300">
+            <li :for={meal <- @meals} class="flex items-center gap-3 px-3 py-2">
+              <label class="flex items-center gap-3 flex-1 cursor-pointer min-w-0">
                 <input
                   type="checkbox"
                   class="checkbox checkbox-sm"
@@ -73,11 +92,26 @@ defmodule GroceryAidWeb.ShoppingListLive do
                   phx-click="toggle"
                   phx-value-id={meal.id}
                 />
-                <span class="flex-1">{meal.name}</span>
-                <span class="flex gap-1">
+                <span class="truncate">{meal.name}</span>
+                <span class="flex gap-1 shrink-0">
                   <span :for={tag <- meal.tags} class="badge badge-xs badge-outline">{tag.name}</span>
                 </span>
               </label>
+              <form
+                :if={MapSet.member?(@selected, meal.id) and meal.servings}
+                phx-change="set_servings"
+                phx-value-id={meal.id}
+                class="flex items-center gap-1 shrink-0"
+              >
+                <input
+                  type="number"
+                  name="value"
+                  value={Map.get(@targets, meal.id) || meal.servings}
+                  min="1"
+                  class="input input-xs input-bordered w-14"
+                />
+                <span class="text-xs opacity-50">/ {meal.servings}</span>
+              </form>
             </li>
           </ul>
         </div>

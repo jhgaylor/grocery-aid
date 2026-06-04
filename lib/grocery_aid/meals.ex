@@ -267,13 +267,26 @@ defmodule GroceryAid.Meals do
 
   Returns `[%{store: store | nil, items: [%{ingredient:, store_item:, quantities:}]}]`
   where `quantities` is `[%{unit: string | nil, total: Decimal}]`.
+
+  `targets` is an optional `%{meal_id => target_servings}` map: each meal's
+  line quantities are scaled by `target / base_servings` before aggregating, so
+  you can buy for "2 servings" of a recipe that makes 8. Meals without a known
+  base yield (or no target) are not scaled.
   """
-  def shopping_list(meal_ids) when is_list(meal_ids) do
+  def shopping_list(meal_ids, targets \\ %{}) when is_list(meal_ids) do
     alias GroceryAid.Catalog.StoreItem
+
+    factors = meal_scale_factors(meal_ids, targets)
 
     lines =
       from(mi in MealIngredient, where: mi.meal_id in ^meal_ids, preload: [:ingredient])
       |> Repo.all()
+      |> Enum.map(fn line ->
+        case {line.quantity, Map.get(factors, line.meal_id)} do
+          {%Decimal{} = q, %Decimal{} = f} -> %{line | quantity: Decimal.mult(q, f)}
+          _ -> line
+        end
+      end)
 
     by_ingredient = Enum.group_by(lines, & &1.ingredient_id)
     ingredient_ids = Map.keys(by_ingredient)
@@ -336,6 +349,27 @@ defmodule GroceryAid.Meals do
       Enum.join([header | rows], "\n")
     end)
     |> Enum.join("\n\n")
+  end
+
+  # Per-meal scale factor = target_servings / base_servings (Decimal 1 when
+  # either is unknown/zero).
+  defp meal_scale_factors(meal_ids, targets) do
+    bases =
+      from(m in Meal, where: m.id in ^meal_ids, select: {m.id, m.servings})
+      |> Repo.all()
+      |> Map.new()
+
+    Map.new(meal_ids, fn id ->
+      base = Map.get(bases, id)
+      target = Map.get(targets, id)
+
+      factor =
+        if is_integer(base) and base > 0 and is_integer(target) and target > 0,
+          do: Decimal.div(Decimal.new(target), Decimal.new(base)),
+          else: Decimal.new(1)
+
+      {id, factor}
+    end)
   end
 
   # Sum quantities per unit; lines without a quantity contribute nothing.
