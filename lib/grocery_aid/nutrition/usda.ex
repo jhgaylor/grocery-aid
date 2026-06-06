@@ -31,14 +31,25 @@ defmodule GroceryAid.Nutrition.USDA do
   end
 
   defp search(query, data_types) do
-    params = [
-      query: query,
-      dataType: Enum.join(data_types, ","),
-      pageSize: 15,
-      api_key: api_key()
-    ]
+    # dataType MUST be sent as repeated params (dataType=Foundation&dataType=SR
+    # Legacy). A single comma-joined value is silently ignored by FDC (it then
+    # returns every data type, so "bell pepper" floods with branded "TACO BELL"
+    # items), and Req collapses duplicate keyword keys — so build the query
+    # string ourselves with URI.encode_query, which preserves duplicate keys.
+    # Encode spaces as %20 (not "+"): FDC reads "SR+Legacy" as a literal,
+    # invalid dataType and silently drops the whole filter.
+    enc = &URI.encode(to_string(&1), fn c -> URI.char_unreserved?(c) end)
 
-    case Req.get(@base, params: params, receive_timeout: 15_000, retry: false) do
+    # requireAllWords keeps every query word present in matches — without it,
+    # FDC's (nondeterministic) ranking floods e.g. "bell pepper" with
+    # "TACO BELL, Nachos" (matches "bell", not "pepper").
+    qs =
+      ([{"query", query}] ++
+         Enum.map(data_types, &{"dataType", &1}) ++
+         [{"requireAllWords", "true"}, {"pageSize", "15"}, {"api_key", api_key()}])
+      |> Enum.map_join("&", fn {k, v} -> "#{k}=#{enc.(v)}" end)
+
+    case Req.get("#{@base}?#{qs}", receive_timeout: 15_000, retry: false) do
       {:ok, %Req.Response{status: 200, body: %{"foods" => foods}}} when is_list(foods) ->
         {:ok, foods |> Enum.map(&to_candidate/1) |> Enum.reject(&is_nil/1)}
 

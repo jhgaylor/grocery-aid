@@ -84,11 +84,35 @@ defmodule GroceryAid.Nutrition do
   defp choose(_name, [only]), do: only
 
   defp choose(name, candidates) do
-    if OpenRouter.configured?() do
-      llm_choose(name, candidates) || hd(candidates)
-    else
-      hd(candidates)
+    # Drop brand/restaurant entries ("TACO BELL, Nachos", "DENNY'S, ...") which
+    # USDA mixes into SR Legacy and which derail matching — unless that's all
+    # there is.
+    pool =
+      case Enum.reject(candidates, &branded?(&1.description)) do
+        [] -> candidates
+        cleaned -> cleaned
+      end
+
+    cond do
+      match?([_], pool) -> hd(pool)
+      OpenRouter.configured?() -> llm_choose(name, pool) || prefer_raw(pool)
+      true -> prefer_raw(pool)
     end
+  end
+
+  # ALL-CAPS tokens (brands) or restaurant markers signal a non-generic entry.
+  defp branded?(description) do
+    String.match?(description, ~r/\b[A-Z]{3,}\b/) or
+      String.downcase(description) =~ ~r/\brestaurant\b|\bfast food\b/
+  end
+
+  # Fallback: prefer a "raw" generic entry, else the first.
+  defp prefer_raw(candidates) do
+    Enum.find(
+      candidates,
+      hd(candidates),
+      &String.contains?(String.downcase(&1.description), "raw")
+    )
   end
 
   defp llm_choose(name, candidates) do
@@ -101,11 +125,19 @@ defmodule GroceryAid.Nutrition do
       |> Enum.join("\n")
 
     prompt = """
-    Which option best matches the plain ingredient "#{name}" as bought raw/generic for home cooking?
+    Pick the option that best represents the plain ingredient "#{name}" as bought raw/generic
+    for home cooking, for a calorie estimate.
     #{options}
 
-    Return ONLY JSON {"index": <integer or null>}. Prefer the simplest raw/generic form
-    (e.g. for "basmati rice" choose white rice, not rice crackers). null if none fit.
+    Guidance:
+    - Prefer the simplest raw/whole-food form (e.g. "basmati rice" -> plain white rice, raw;
+      "bell pepper" -> raw bell pepper; "sirloin" -> beef sirloin, not veal).
+    - Avoid prepared dishes, snacks, and anything unlike the ingredient (e.g. don't pick
+      "croutons" for "seasoned salt" — pick table salt; don't pick nachos for a pepper).
+    - The calories should be plausible for that ingredient.
+
+    Return ONLY JSON {"index": <integer>} with the best option's number, or {"index": null}
+    if none are a reasonable match.
     """
 
     with {:ok, %{text: text}} <- OpenRouter.complete(prompt, json: true),
