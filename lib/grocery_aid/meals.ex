@@ -271,17 +271,21 @@ defmodule GroceryAid.Meals do
         do: GroceryAid.Catalog.fetch_nutrition(mi.ingredient)
     end)
 
-    # 2. Estimate grams per line and persist.
-    lines =
-      Enum.map(meal.meal_ingredients, fn mi ->
-        %{name: mi.ingredient.name, quantity: mi.quantity, unit: mi.unit}
-      end)
+    # 2. Estimate grams only for lines that don't have a value yet, so
+    # re-clicking "Calculate" (or adding one ingredient) doesn't re-hit the LLM
+    # for the whole recipe. New lines start with grams=nil; editing a line's
+    # quantity won't auto-refresh its grams (re-add it, or it stays as-is).
+    needs = Enum.filter(meal.meal_ingredients, &is_nil(&1.grams))
 
-    meal.meal_ingredients
-    |> Enum.zip(GroceryAid.Nutrition.grams_for(lines))
-    |> Enum.each(fn {mi, grams} ->
-      if grams, do: mi |> Ecto.Changeset.change(grams: grams) |> Repo.update()
-    end)
+    if needs != [] do
+      lines = Enum.map(needs, &%{name: &1.ingredient.name, quantity: &1.quantity, unit: &1.unit})
+
+      needs
+      |> Enum.zip(GroceryAid.Nutrition.grams_for(lines))
+      |> Enum.each(fn {mi, grams} ->
+        if grams, do: mi |> Ecto.Changeset.change(grams: grams) |> Repo.update()
+      end)
+    end
 
     {:ok, get_meal_with_details!(meal.id)}
   end
