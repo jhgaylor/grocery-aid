@@ -13,6 +13,9 @@ defmodule GroceryAidWeb.MealLive.Index do
         Meals
         <:subtitle>The dishes you like — your rotation.</:subtitle>
         <:actions>
+          <.button navigate={~p"/meals/generate"}>
+            <.icon name="hero-sparkles" /> Describe a meal
+          </.button>
           <.button navigate={~p"/meals/import"}>
             <.icon name="hero-arrow-down-tray" /> Import from URL
           </.button>

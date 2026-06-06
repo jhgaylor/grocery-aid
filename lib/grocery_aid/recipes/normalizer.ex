@@ -14,6 +14,7 @@ defmodule GroceryAid.Recipes.Normalizer do
 
   alias GroceryAid.Catalog.Ingredient
   alias GroceryAid.LLM.OpenRouter
+  alias GroceryAid.Recipes.Lines
 
   @doc "Whether the LLM enhancement is available (API key configured)."
   def available?, do: OpenRouter.configured?()
@@ -35,8 +36,7 @@ defmodule GroceryAid.Recipes.Normalizer do
   defp do_normalize(raw_lines, catalog) do
     with {:ok, %{text: text}} <- OpenRouter.complete(prompt(raw_lines, catalog), json: true),
          {:ok, %{"lines" => lines}} when is_list(lines) <- Jason.decode(text) do
-      by_id = Map.new(catalog, &{&1.id, &1})
-      enriched = lines |> Enum.map(&enrich(&1, by_id)) |> Enum.reject(&is_nil/1)
+      enriched = Lines.enrich_all(lines, catalog)
 
       # Only trust the result if the model returned an entry per input line.
       if length(enriched) == length(raw_lines),
@@ -47,57 +47,6 @@ defmodule GroceryAid.Recipes.Normalizer do
       other -> {:error, {:bad_payload, other}}
     end
   end
-
-  defp enrich(%{"raw" => raw} = line, by_id) when is_binary(raw) do
-    matched = match_ingredient(line["match_id"], by_id)
-
-    %{
-      raw: raw,
-      quantity: to_decimal(line["quantity"]),
-      unit: blank_to_nil(line["unit"]),
-      name: (blank_to_nil(line["name"]) || raw) |> String.trim(),
-      category: valid_category(line["category"]),
-      matched_id: matched && matched.id,
-      matched_name: matched && matched.name
-    }
-  end
-
-  defp enrich(_, _), do: nil
-
-  defp match_ingredient(id, by_id) when is_integer(id), do: Map.get(by_id, id)
-
-  defp match_ingredient(id, by_id) when is_binary(id) do
-    case Integer.parse(id) do
-      {n, ""} -> Map.get(by_id, n)
-      _ -> nil
-    end
-  end
-
-  defp match_ingredient(_, _), do: nil
-
-  defp to_decimal(n) when is_integer(n), do: Decimal.new(n)
-  defp to_decimal(n) when is_float(n), do: Decimal.from_float(n) |> Decimal.round(3)
-
-  defp to_decimal(s) when is_binary(s) do
-    case Decimal.parse(String.trim(s)) do
-      {d, _} -> d
-      :error -> nil
-    end
-  end
-
-  defp to_decimal(_), do: nil
-
-  defp blank_to_nil(s) when is_binary(s),
-    do: if(String.trim(s) == "", do: nil, else: String.trim(s))
-
-  defp blank_to_nil(_), do: nil
-
-  defp valid_category(c) when is_binary(c) do
-    c = String.downcase(String.trim(c))
-    if c in Ingredient.categories(), do: c, else: nil
-  end
-
-  defp valid_category(_), do: nil
 
   defp prompt(raw_lines, catalog) do
     catalog_block =

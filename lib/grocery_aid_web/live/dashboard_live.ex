@@ -99,6 +99,9 @@ defmodule GroceryAidWeb.DashboardLive do
       </div>
 
       <div class="flex flex-wrap gap-2 mt-4">
+        <.link navigate={~p"/meals/generate"} class="btn btn-outline btn-sm">
+          <.icon name="hero-sparkles" class="size-4" /> Describe a meal
+        </.link>
         <.link navigate={~p"/meals/new"} class="btn btn-outline btn-sm">
           <.icon name="hero-plus" class="size-4" /> New meal
         </.link>
