@@ -15,6 +15,10 @@ defmodule GroceryAidWeb.IngredientLive.Show do
           <.button navigate={~p"/ingredients"}>
             <.icon name="hero-arrow-left" />
           </.button>
+          <.button phx-click="lookup_nutrition" phx-disable-with="Looking up...">
+            <.icon name="hero-magnifying-glass" class="size-4" />
+            {if @ingredient.calories_per_100g, do: "Refresh calories", else: "Look up calories"}
+          </.button>
           <.button variant="primary" navigate={~p"/ingredients/#{@ingredient}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit
           </.button>
@@ -24,6 +28,12 @@ defmodule GroceryAidWeb.IngredientLive.Show do
       <.list>
         <:item :if={@ingredient.default_unit} title="Default unit">
           {@ingredient.default_unit}
+        </:item>
+        <:item :if={@ingredient.calories_per_100g} title="Calories">
+          {round(@ingredient.calories_per_100g)} kcal / 100g
+          <span :if={@ingredient.fdc_description} class="text-xs opacity-60">
+            · USDA: {@ingredient.fdc_description}
+          </span>
         </:item>
         <:item :if={@ingredient.notes} title="Notes">{@ingredient.notes}</:item>
       </.list>
@@ -119,6 +129,19 @@ defmodule GroceryAidWeb.IngredientLive.Show do
   def handle_event("remove_store", %{"id" => id}, socket) do
     id |> Catalog.get_store_item!() |> Catalog.delete_store_item()
     {:noreply, socket |> put_flash(:info, "Removed") |> load()}
+  end
+
+  def handle_event("lookup_nutrition", _params, socket) do
+    case Catalog.fetch_nutrition(socket.assigns.ingredient) do
+      {:ok, _} ->
+        {:noreply, socket |> put_flash(:info, "Calories updated from USDA") |> load()}
+
+      {:error, :no_match} ->
+        {:noreply, put_flash(socket, :error, "No USDA match found for that name.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Couldn't reach USDA — try again.")}
+    end
   end
 
   defp load(socket) do

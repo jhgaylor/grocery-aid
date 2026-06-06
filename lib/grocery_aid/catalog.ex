@@ -57,6 +57,43 @@ defmodule GroceryAid.Catalog do
   def get_ingredient!(id), do: Repo.get!(Ingredient, id)
 
   @doc """
+  Looks up an ingredient's per-100g energy from USDA FoodData Central and
+  caches it on the ingredient. Returns `{:ok, ingredient}` or `{:error, reason}`.
+  """
+  def fetch_nutrition(%Ingredient{} = ingredient) do
+    case GroceryAid.Nutrition.lookup(ingredient.name) do
+      {:ok, n} ->
+        update_ingredient(ingredient, %{
+          calories_per_100g: n.calories_per_100g,
+          fdc_id: n.fdc_id,
+          fdc_description: n.description
+        })
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "Ingredients that don't yet have a per-100g calorie value."
+  def list_ingredients_without_nutrition do
+    from(i in Ingredient, where: is_nil(i.calories_per_100g), order_by: i.name) |> Repo.all()
+  end
+
+  @doc """
+  Fetches nutrition for every ingredient missing it. Returns
+  `%{ok: n, failed: m}`. Best-effort and sequential (USDA rate limits).
+  """
+  def fetch_missing_nutrition do
+    list_ingredients_without_nutrition()
+    |> Enum.reduce(%{ok: 0, failed: 0}, fn ing, acc ->
+      case fetch_nutrition(ing) do
+        {:ok, _} -> %{acc | ok: acc.ok + 1}
+        {:error, _} -> %{acc | failed: acc.failed + 1}
+      end
+    end)
+  end
+
+  @doc """
   Gets an ingredient with its store availability (and each store) preloaded.
   """
   def get_ingredient_with_stores!(id) do

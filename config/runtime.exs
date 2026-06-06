@@ -31,6 +31,10 @@ config :grocery_aid,
   openrouter_api_key: System.get_env("OPENROUTER_API_KEY"),
   openrouter_model: System.get_env("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
+# USDA FoodData Central — authoritative per-100g nutrition lookups. DEMO_KEY
+# works at low rate limits; a real free key lives in the Infisical project.
+config :grocery_aid, fdc_api_key: System.get_env("FDC_API_KEY", "DEMO_KEY")
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

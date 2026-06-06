@@ -255,6 +255,74 @@ defmodule GroceryAid.Meals do
     {:ok, Repo.preload(meal, :tags, force: true)}
   end
 
+  ## Nutrition ---------------------------------------------------------------
+
+  @doc """
+  Fills in the nutrition inputs for a meal: ensures each ingredient has a USDA
+  per-100g calorie value (looking it up if missing) and estimates grams for
+  each recipe line. Persists both. Returns `{:ok, reloaded_meal}`.
+  """
+  def calculate_nutrition(%Meal{} = meal) do
+    meal = Repo.preload(meal, meal_ingredients: :ingredient)
+
+    # 1. Ensure each ingredient has a per-100g calorie value.
+    Enum.each(meal.meal_ingredients, fn mi ->
+      if is_nil(mi.ingredient.calories_per_100g),
+        do: GroceryAid.Catalog.fetch_nutrition(mi.ingredient)
+    end)
+
+    # 2. Estimate grams per line and persist.
+    lines =
+      Enum.map(meal.meal_ingredients, fn mi ->
+        %{name: mi.ingredient.name, quantity: mi.quantity, unit: mi.unit}
+      end)
+
+    meal.meal_ingredients
+    |> Enum.zip(GroceryAid.Nutrition.grams_for(lines))
+    |> Enum.each(fn {mi, grams} ->
+      if grams, do: mi |> Ecto.Changeset.change(grams: grams) |> Repo.update()
+    end)
+
+    {:ok, get_meal_with_details!(meal.id)}
+  end
+
+  @doc """
+  Computes a meal's calories from stored grams × ingredient calories_per_100g,
+  optionally scaled. Returns `%{total, per_serving, counted, total_lines}`
+  (per_serving is nil without a servings count; counted/total_lines convey how
+  complete the estimate is).
+  """
+  def meal_nutrition(%Meal{} = meal, scale \\ Decimal.new(1)) do
+    meal = Repo.preload(meal, meal_ingredients: :ingredient)
+    factor = Decimal.to_float(scale)
+
+    counted =
+      Enum.filter(meal.meal_ingredients, fn mi ->
+        mi.grams && mi.ingredient.calories_per_100g
+      end)
+
+    total =
+      Enum.reduce(counted, 0.0, fn mi, acc ->
+        acc + mi.grams / 100.0 * mi.ingredient.calories_per_100g
+      end) * factor
+
+    per_serving =
+      if is_integer(meal.servings) and meal.servings > 0, do: total / meal.servings
+
+    %{
+      total: total,
+      per_serving: per_serving,
+      counted: length(counted),
+      total_lines: length(meal.meal_ingredients)
+    }
+  end
+
+  @doc "True once at least one line has a grams estimate (nutrition was computed)."
+  def nutrition_computed?(%Meal{} = meal) do
+    meal = Repo.preload(meal, :meal_ingredients)
+    Enum.any?(meal.meal_ingredients, & &1.grams)
+  end
+
   ## Shopping list -----------------------------------------------------------
 
   @doc """

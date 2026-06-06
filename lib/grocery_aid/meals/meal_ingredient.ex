@@ -9,6 +9,7 @@ defmodule GroceryAid.Meals.MealIngredient do
     field :quantity, :decimal
     field :unit, :string
     field :notes, :string
+    field :grams, :float
 
     belongs_to :meal, Meal
     belongs_to :ingredient, Ingredient
@@ -19,7 +20,7 @@ defmodule GroceryAid.Meals.MealIngredient do
   @doc false
   def changeset(meal_ingredient, attrs) do
     meal_ingredient
-    |> cast(attrs, [:quantity, :unit, :notes, :meal_id, :ingredient_id])
+    |> cast(attrs, [:quantity, :unit, :notes, :grams, :meal_id, :ingredient_id])
     |> validate_required([:meal_id, :ingredient_id])
     |> validate_number(:quantity, greater_than: 0)
     |> assoc_constraint(:meal)

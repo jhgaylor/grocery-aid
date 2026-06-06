@@ -11,11 +11,13 @@ defmodule GroceryAidWeb.ShoppingListLive do
      socket
      |> assign(:page_title, "Shopping List")
      |> assign(:meals, meals)
+     |> assign(:meals_by_id, Map.new(meals, &{&1.id, &1}))
      |> assign(:base_servings, Map.new(meals, &{&1.id, &1.servings}))
      |> assign(:selected, MapSet.new())
      |> assign(:targets, %{})
      |> assign(:groups, [])
-     |> assign(:list_text, "")}
+     |> assign(:list_text, "")
+     |> assign(:calories, %{total: 0.0, with_data: 0, selected: 0})}
   end
 
   @impl true
@@ -58,6 +60,27 @@ defmodule GroceryAidWeb.ShoppingListLive do
     |> assign(:targets, targets)
     |> assign(:groups, groups)
     |> assign(:list_text, Meals.shopping_list_text(groups))
+    |> assign(:calories, calorie_total(selected, targets, socket.assigns))
+  end
+
+  # Rough kcal across selected meals, each scaled by its target/base servings.
+  # Only meals that have calculated nutrition contribute.
+  defp calorie_total(selected, targets, assigns) do
+    {total, with_data} =
+      Enum.reduce(selected, {0.0, 0}, fn id, {sum, n} ->
+        meal = assigns.meals_by_id[id]
+        factor = scale_factor(assigns.base_servings[id], targets[id])
+        nut = Meals.meal_nutrition(meal, factor)
+        if nut.counted > 0, do: {sum + nut.total, n + 1}, else: {sum, n}
+      end)
+
+    %{total: total, with_data: with_data, selected: MapSet.size(selected)}
+  end
+
+  defp scale_factor(base, target) do
+    if is_integer(base) and base > 0 and is_integer(target) and target > 0,
+      do: Decimal.div(Decimal.new(target), Decimal.new(base)),
+      else: Decimal.new(1)
   end
 
   @impl true
@@ -129,6 +152,14 @@ defmodule GroceryAidWeb.ShoppingListLive do
             </button>
           </div>
           <p :if={@groups == []} class="opacity-70">Select meals to build your list.</p>
+
+          <div :if={@calories.with_data > 0} class="text-sm opacity-80 mb-2">
+            ≈ <span class="font-semibold">{round(@calories.total)} kcal</span>
+            total
+            <span :if={@calories.with_data < @calories.selected} class="opacity-60">
+              (from {@calories.with_data} of {@calories.selected} meals with calorie data)
+            </span>
+          </div>
 
           <div :for={group <- @groups} class="card bg-base-200 mb-3">
             <div class="card-body p-4">

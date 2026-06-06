@@ -8,8 +8,12 @@ defmodule GroceryAidWeb.IngredientLive.Index do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>
-        Listing Ingredients
+        Ingredients
+        <:subtitle>Your pantry of building blocks.</:subtitle>
         <:actions>
+          <.button :if={@missing > 0} phx-click="fetch_missing" phx-disable-with="Fetching...">
+            <.icon name="hero-bolt" class="size-4" /> Fetch calories ({@missing})
+          </.button>
           <.button variant="primary" navigate={~p"/ingredients/new"}>
             <.icon name="hero-plus" /> New Ingredient
           </.button>
@@ -23,8 +27,10 @@ defmodule GroceryAidWeb.IngredientLive.Index do
       >
         <:col :let={{_id, ingredient}} label="Name">{ingredient.name}</:col>
         <:col :let={{_id, ingredient}} label="Category">{ingredient.category}</:col>
+        <:col :let={{_id, ingredient}} label="kcal/100g">
+          <span :if={ingredient.calories_per_100g}>{round(ingredient.calories_per_100g)}</span>
+        </:col>
         <:col :let={{_id, ingredient}} label="Default unit">{ingredient.default_unit}</:col>
-        <:col :let={{_id, ingredient}} label="Notes">{ingredient.notes}</:col>
         <:action :let={{_id, ingredient}}>
           <div class="sr-only">
             <.link navigate={~p"/ingredients/#{ingredient}"}>Show</.link>
@@ -48,8 +54,9 @@ defmodule GroceryAidWeb.IngredientLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Listing Ingredients")
-     |> stream(:ingredients, list_ingredients())}
+     |> assign(:page_title, "Ingredients")
+     |> assign_missing()
+     |> stream(:ingredients, Catalog.list_ingredients())}
   end
 
   @impl true
@@ -57,10 +64,24 @@ defmodule GroceryAidWeb.IngredientLive.Index do
     ingredient = Catalog.get_ingredient!(id)
     {:ok, _} = Catalog.delete_ingredient(ingredient)
 
-    {:noreply, stream_delete(socket, :ingredients, ingredient)}
+    {:noreply, socket |> stream_delete(:ingredients, ingredient) |> assign_missing()}
   end
 
-  defp list_ingredients() do
-    Catalog.list_ingredients()
+  def handle_event("fetch_missing", _params, socket) do
+    %{ok: ok, failed: failed} = Catalog.fetch_missing_nutrition()
+
+    msg =
+      "Fetched calories for #{ok} ingredient(s)" <>
+        if failed > 0, do: " (#{failed} had no USDA match)", else: ""
+
+    {:noreply,
+     socket
+     |> put_flash(:info, msg)
+     |> assign_missing()
+     |> stream(:ingredients, Catalog.list_ingredients(), reset: true)}
+  end
+
+  defp assign_missing(socket) do
+    assign(socket, :missing, length(Catalog.list_ingredients_without_nutrition()))
   end
 end

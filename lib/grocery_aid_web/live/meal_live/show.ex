@@ -126,6 +126,46 @@ defmodule GroceryAidWeb.MealLive.Show do
           </p>
         </div>
       </div>
+
+      <div :if={@meal.meal_ingredients != []} class="card bg-base-200 mt-4">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <h2 class="card-title">Nutrition</h2>
+            <button
+              class="btn btn-xs btn-ghost"
+              phx-click="calc_nutrition"
+              phx-disable-with="Calculating..."
+            >
+              <.icon name="hero-calculator" class="size-4" />
+              {if @nutrition_computed, do: "Recalculate", else: "Calculate calories"}
+            </button>
+          </div>
+
+          <div :if={@nutrition_computed}>
+            <div class="flex items-baseline gap-4 flex-wrap">
+              <div :if={@nutrition.per_serving} class="text-2xl font-bold">
+                {round(scaled(@nutrition.per_serving, @scale))}
+                <span class="text-sm font-normal opacity-70">kcal / serving</span>
+              </div>
+              <div class="opacity-70 text-sm">
+                {round(scaled(@nutrition.total, @scale))} kcal total{if @meal.servings,
+                  do: " · #{current_target(@meal.servings, @scale)} servings"}
+              </div>
+            </div>
+            <p
+              :if={@nutrition.counted < @nutrition.total_lines}
+              class="text-xs opacity-60 mt-1"
+            >
+              Based on {@nutrition.counted} of {@nutrition.total_lines} ingredients — others are
+              missing USDA data.
+            </p>
+          </div>
+
+          <p :if={not @nutrition_computed} class="opacity-70 text-sm">
+            Estimate calories from USDA FoodData Central + your ingredient amounts.
+          </p>
+        </div>
+      </div>
     </Layouts.app>
     """
   end
@@ -154,6 +194,11 @@ defmodule GroceryAidWeb.MealLive.Show do
   def handle_event("mark_made", _params, socket) do
     {:ok, _} = Meals.mark_made(socket.assigns.meal)
     {:noreply, socket |> put_flash(:info, "Marked as made today") |> load_meal()}
+  end
+
+  def handle_event("calc_nutrition", _params, socket) do
+    {:ok, _} = Meals.calculate_nutrition(socket.assigns.meal)
+    {:noreply, socket |> put_flash(:info, "Calculated calories") |> load_meal()}
   end
 
   def handle_event("scale_by", %{"factor" => f}, socket) do
@@ -187,6 +232,8 @@ defmodule GroceryAidWeb.MealLive.Show do
     |> assign(:meal, meal)
     |> assign(:ingredient_options, options)
     |> assign(:line_form, to_form(Meals.change_meal_ingredient(%MealIngredient{})))
+    |> assign(:nutrition, Meals.meal_nutrition(meal))
+    |> assign(:nutrition_computed, Enum.any?(meal.meal_ingredients, & &1.grams))
   end
 
   defp format_qty(%Decimal{} = d), do: d |> Decimal.normalize() |> Decimal.to_string(:normal)
@@ -194,6 +241,9 @@ defmodule GroceryAidWeb.MealLive.Show do
 
   defp scale_qty(nil, _scale), do: nil
   defp scale_qty(%Decimal{} = q, scale), do: Decimal.mult(q, scale)
+
+  defp scaled(nil, _scale), do: 0
+  defp scaled(value, scale) when is_number(value), do: value * Decimal.to_float(scale)
 
   defp scaled?(scale), do: Decimal.compare(scale, Decimal.new(1)) != :eq
 
