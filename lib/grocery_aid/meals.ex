@@ -330,12 +330,12 @@ defmodule GroceryAid.Meals do
   ## Shopping list -----------------------------------------------------------
 
   @doc """
-  Given a list of meal ids, aggregates their recipe lines into a shopping
-  list grouped by store. Quantities for the same ingredient are summed per
-  unit (you can't add "2 cups" to "1 lb", so each unit is tracked separately).
-  Each ingredient also carries the cheapest known store_item so the list can
-  suggest where to buy it; ingredients with no known store land in an
-  "Unassigned" bucket.
+  Given a list of meal ids, aggregates their recipe lines into a shopping list
+  grouped by each ingredient's **preferred store**. Quantities for the same
+  ingredient are summed per unit (you can't add "2 cups" to "1 lb"). Each
+  ingredient carries the store_item at its preferred store (if any) for
+  price/aisle/link; ingredients with no preferred store land in a "No store
+  assigned" bucket.
 
   Returns `[%{store: store | nil, items: [%{ingredient:, store_item:, quantities:}]}]`
   where `quantities` is `[%{unit: string | nil, total: Decimal}]`.
@@ -351,7 +351,10 @@ defmodule GroceryAid.Meals do
     factors = meal_scale_factors(meal_ids, targets)
 
     lines =
-      from(mi in MealIngredient, where: mi.meal_id in ^meal_ids, preload: [:ingredient])
+      from(mi in MealIngredient,
+        where: mi.meal_id in ^meal_ids,
+        preload: [ingredient: :preferred_store]
+      )
       |> Repo.all()
       |> Enum.map(fn line ->
         case {line.quantity, Map.get(factors, line.meal_id)} do
@@ -363,25 +366,27 @@ defmodule GroceryAid.Meals do
     by_ingredient = Enum.group_by(lines, & &1.ingredient_id)
     ingredient_ids = Map.keys(by_ingredient)
 
-    # Cheapest store_item per ingredient (nil price sorts last).
+    # store_item keyed by {ingredient_id, store_id} so we can attach the one at
+    # the ingredient's preferred store (price/aisle/buy link).
     store_items =
-      from(si in StoreItem, where: si.ingredient_id in ^ingredient_ids, preload: [:store])
+      from(si in StoreItem, where: si.ingredient_id in ^ingredient_ids)
       |> Repo.all()
-      |> Enum.group_by(& &1.ingredient_id)
-      |> Map.new(fn {ing_id, items} ->
-        {ing_id, Enum.min_by(items, &(&1.price || Decimal.new("999999999")), fn -> nil end)}
-      end)
+      |> Map.new(&{{&1.ingredient_id, &1.store_id}, &1})
 
     by_ingredient
     |> Enum.map(fn {ing_id, ing_lines} ->
+      ingredient = hd(ing_lines).ingredient
+      store = ingredient.preferred_store
+
       %{
-        ingredient: hd(ing_lines).ingredient,
-        store_item: Map.get(store_items, ing_id),
+        ingredient: ingredient,
+        store: store,
+        store_item: store && Map.get(store_items, {ing_id, store.id}),
         quantities: aggregate_quantities(ing_lines)
       }
     end)
     |> Enum.sort_by(& &1.ingredient.name)
-    |> Enum.group_by(fn %{store_item: si} -> si && si.store end)
+    |> Enum.group_by(& &1.store)
     |> Enum.map(fn {store, items} -> %{store: store, items: items} end)
     |> Enum.sort_by(fn %{store: store} -> (store && store.name) || "~" end)
   end

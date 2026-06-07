@@ -18,7 +18,7 @@ defmodule GroceryAid.Catalog do
 
   """
   def list_ingredients do
-    Ingredient |> order_by(asc: :name) |> Repo.all()
+    Ingredient |> order_by(asc: :name) |> preload(:preferred_store) |> Repo.all()
   end
 
   @doc """
@@ -99,7 +99,7 @@ defmodule GroceryAid.Catalog do
   def get_ingredient_with_stores!(id) do
     Ingredient
     |> Repo.get!(id)
-    |> Repo.preload(store_items: [:store])
+    |> Repo.preload([:preferred_store, store_items: [:store]])
   end
 
   @doc """

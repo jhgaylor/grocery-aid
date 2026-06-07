@@ -16,6 +16,8 @@ defmodule GroceryAidWeb.ShoppingListLive do
      |> assign(:selected, MapSet.new())
      |> assign(:targets, %{})
      |> assign(:groups, [])
+     |> assign(:visible_groups, [])
+     |> assign(:store_filter, "")
      |> assign(:list_text, "")
      |> assign(:calories, %{total: 0.0, with_data: 0, selected: 0})}
   end
@@ -52,6 +54,10 @@ defmodule GroceryAidWeb.ShoppingListLive do
     {:noreply, recompute(socket, MapSet.new(), %{})}
   end
 
+  def handle_event("shop_at", %{"store" => store}, socket) do
+    {:noreply, socket |> assign(:store_filter, store) |> apply_view()}
+  end
+
   defp recompute(socket, selected, targets) do
     groups = Meals.shopping_list(MapSet.to_list(selected), targets)
 
@@ -59,8 +65,27 @@ defmodule GroceryAidWeb.ShoppingListLive do
     |> assign(:selected, selected)
     |> assign(:targets, targets)
     |> assign(:groups, groups)
-    |> assign(:list_text, Meals.shopping_list_text(groups))
     |> assign(:calories, calorie_total(selected, targets, socket.assigns))
+    |> apply_view()
+  end
+
+  # Narrow the displayed groups to the chosen store ("" = all, "none" =
+  # unassigned, "<id>" = that store) and rebuild the copy-text from what's shown.
+  defp apply_view(socket) do
+    filter = socket.assigns.store_filter
+
+    visible =
+      Enum.filter(socket.assigns.groups, fn %{store: store} ->
+        case filter do
+          "" -> true
+          "none" -> is_nil(store)
+          id -> store && to_string(store.id) == id
+        end
+      end)
+
+    socket
+    |> assign(:visible_groups, visible)
+    |> assign(:list_text, Meals.shopping_list_text(visible))
   end
 
   # Rough kcal across selected meals, each scaled by its target/base servings.
@@ -82,6 +107,13 @@ defmodule GroceryAidWeb.ShoppingListLive do
       do: Decimal.div(Decimal.new(target), Decimal.new(base)),
       else: Decimal.new(1)
   end
+
+  # Stores present in the current list (for the "Shopping at" dropdown).
+  defp store_options(groups) do
+    groups |> Enum.map(& &1.store) |> Enum.reject(&is_nil/1)
+  end
+
+  defp has_unassigned?(groups), do: Enum.any?(groups, &is_nil(&1.store))
 
   @impl true
   def render(assigns) do
@@ -153,6 +185,25 @@ defmodule GroceryAidWeb.ShoppingListLive do
           </div>
           <p :if={@groups == []} class="opacity-70">Select meals to build your list.</p>
 
+          <form :if={@groups != []} phx-change="shop_at" class="mb-3">
+            <label class="form-control">
+              <span class="label-text text-xs">Shopping at</span>
+              <select name="store" class="select select-sm select-bordered">
+                <option value="" selected={@store_filter == ""}>All stores</option>
+                <option
+                  :for={store <- store_options(@groups)}
+                  value={store.id}
+                  selected={@store_filter == to_string(store.id)}
+                >
+                  {store.name}
+                </option>
+                <option :if={has_unassigned?(@groups)} value="none" selected={@store_filter == "none"}>
+                  No store assigned
+                </option>
+              </select>
+            </label>
+          </form>
+
           <div :if={@calories.with_data > 0} class="text-sm opacity-80 mb-2">
             ≈ <span class="font-semibold">{round(@calories.total)} kcal</span>
             total
@@ -161,7 +212,11 @@ defmodule GroceryAidWeb.ShoppingListLive do
             </span>
           </div>
 
-          <div :for={group <- @groups} class="card bg-base-200 mb-3">
+          <p :if={@groups != [] and @visible_groups == []} class="opacity-70">
+            Nothing on your list for that store.
+          </p>
+
+          <div :for={group <- @visible_groups} class="card bg-base-200 mb-3">
             <div class="card-body p-4">
               <h3 class="font-semibold flex items-center gap-2">
                 <.icon name="hero-building-storefront" class="size-4 text-primary" />

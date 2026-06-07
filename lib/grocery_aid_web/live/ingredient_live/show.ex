@@ -26,6 +26,11 @@ defmodule GroceryAidWeb.IngredientLive.Show do
       </.header>
 
       <.list>
+        <:item :if={@ingredient.preferred_store} title="Preferred store">
+          <.link navigate={~p"/stores/#{@ingredient.preferred_store}"} class="link link-hover">
+            {@ingredient.preferred_store.name}
+          </.link>
+        </:item>
         <:item :if={@ingredient.default_unit} title="Default unit">
           {@ingredient.default_unit}
         </:item>

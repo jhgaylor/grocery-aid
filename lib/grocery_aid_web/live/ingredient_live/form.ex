@@ -23,6 +23,13 @@ defmodule GroceryAidWeb.IngredientLive.Form do
           options={Ingredient.categories()}
         />
         <.input field={@form[:default_unit]} type="text" label="Default unit (e.g. lb, oz, each)" />
+        <.input
+          field={@form[:preferred_store_id]}
+          type="select"
+          label="Preferred store"
+          prompt="No preference"
+          options={@store_options}
+        />
         <.input field={@form[:notes]} type="textarea" label="Notes" />
         <footer>
           <.button phx-disable-with="Saving..." variant="primary">Save Ingredient</.button>
@@ -38,6 +45,7 @@ defmodule GroceryAidWeb.IngredientLive.Form do
     {:ok,
      socket
      |> assign(:return_to, return_to(params["return_to"]))
+     |> assign(:store_options, Enum.map(Catalog.list_stores(), &{&1.name, &1.id}))
      |> apply_action(socket.assigns.live_action, params)}
   end
 

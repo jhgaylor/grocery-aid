@@ -2,7 +2,7 @@ defmodule GroceryAid.Catalog.Ingredient do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias GroceryAid.Catalog.StoreItem
+  alias GroceryAid.Catalog.{Store, StoreItem}
   alias GroceryAid.Meals.MealIngredient
 
   @categories ~w(produce meat seafood dairy bakery pantry frozen beverage spices household other)
@@ -15,6 +15,8 @@ defmodule GroceryAid.Catalog.Ingredient do
     field :calories_per_100g, :float
     field :fdc_id, :integer
     field :fdc_description, :string
+
+    belongs_to :preferred_store, Store
 
     has_many :store_items, StoreItem
     has_many :meal_ingredients, MealIngredient
@@ -36,12 +38,14 @@ defmodule GroceryAid.Catalog.Ingredient do
       :notes,
       :calories_per_100g,
       :fdc_id,
-      :fdc_description
+      :fdc_description,
+      :preferred_store_id
     ])
     |> validate_required([:name])
     |> update_change(:name, &String.trim/1)
     |> nilify_blank(:category)
     |> validate_inclusion(:category, @categories)
+    |> assoc_constraint(:preferred_store)
     |> unique_constraint(:name, name: :ingredients_lower_name_index)
   end
 

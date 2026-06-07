@@ -31,6 +31,24 @@ defmodule GroceryAidWeb.IngredientLive.Index do
           <span :if={ingredient.calories_per_100g}>{round(ingredient.calories_per_100g)}</span>
         </:col>
         <:col :let={{_id, ingredient}} label="Default unit">{ingredient.default_unit}</:col>
+        <:col :let={{_id, ingredient}} label="Preferred store">
+          <form phx-change="set_store" phx-value-id={ingredient.id}>
+            <select
+              name="value"
+              class="select select-xs select-bordered"
+              onclick="event.stopPropagation()"
+            >
+              <option value="" selected={is_nil(ingredient.preferred_store_id)}>—</option>
+              <option
+                :for={s <- @stores}
+                value={s.id}
+                selected={ingredient.preferred_store_id == s.id}
+              >
+                {s.name}
+              </option>
+            </select>
+          </form>
+        </:col>
         <:action :let={{_id, ingredient}}>
           <div class="sr-only">
             <.link navigate={~p"/ingredients/#{ingredient}"}>Show</.link>
@@ -55,6 +73,7 @@ defmodule GroceryAidWeb.IngredientLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Ingredients")
+     |> assign(:stores, Catalog.list_stores())
      |> assign_missing()
      |> stream(:ingredients, Catalog.list_ingredients())}
   end
@@ -65,6 +84,14 @@ defmodule GroceryAidWeb.IngredientLive.Index do
     {:ok, _} = Catalog.delete_ingredient(ingredient)
 
     {:noreply, socket |> stream_delete(:ingredients, ingredient) |> assign_missing()}
+  end
+
+  def handle_event("set_store", %{"id" => id, "value" => store_id}, socket) do
+    ingredient = Catalog.get_ingredient!(id)
+    {:ok, updated} = Catalog.update_ingredient(ingredient, %{"preferred_store_id" => store_id})
+    # Re-stream so the row keeps its new value with preferred_store preloaded.
+    {:noreply,
+     stream_insert(socket, :ingredients, Catalog.get_ingredient_with_stores!(updated.id))}
   end
 
   def handle_event("fetch_missing", _params, socket) do
