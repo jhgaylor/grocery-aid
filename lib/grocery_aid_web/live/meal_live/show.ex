@@ -80,22 +80,30 @@ defmodule GroceryAidWeb.MealLive.Show do
           </div>
 
           <ul :if={@meal.meal_ingredients != []} class="divide-y divide-base-300">
-            <li :for={mi <- @meal.meal_ingredients} class="py-2 flex items-center justify-between">
-              <span>
+            <li
+              :for={mi <- @meal.meal_ingredients}
+              class="py-2 flex items-center justify-between gap-2"
+            >
+              <span class="min-w-0">
                 <span :if={mi.quantity} class="font-medium">
                   {format_qty(scale_qty(mi.quantity, @scale))} {mi.unit}
                 </span>
                 {mi.ingredient.name}
                 <span :if={mi.notes} class="text-xs opacity-60">— {mi.notes}</span>
               </span>
-              <.link
-                phx-click="remove_ingredient"
-                phx-value-id={mi.id}
-                data-confirm="Remove this ingredient?"
-                class="text-error text-sm"
-              >
-                Remove
-              </.link>
+              <span class="flex items-center gap-3 shrink-0">
+                <span :if={line_kcal(mi, @scale)} class="text-xs opacity-60">
+                  ~{line_kcal(mi, @scale)} kcal
+                </span>
+                <.link
+                  phx-click="remove_ingredient"
+                  phx-value-id={mi.id}
+                  data-confirm="Remove this ingredient?"
+                  class="text-error text-sm"
+                >
+                  Remove
+                </.link>
+              </span>
             </li>
           </ul>
           <p :if={@meal.meal_ingredients == []} class="opacity-70">No ingredients yet.</p>
@@ -244,6 +252,14 @@ defmodule GroceryAidWeb.MealLive.Show do
 
   defp scaled(nil, _scale), do: 0
   defp scaled(value, scale) when is_number(value), do: value * Decimal.to_float(scale)
+
+  # Per-line calories (grams/100 × kcal/100g), scaled. nil if not yet computed.
+  defp line_kcal(%{grams: g, ingredient: %{calories_per_100g: c}}, scale)
+       when is_number(g) and is_number(c) do
+    round(g / 100.0 * c * Decimal.to_float(scale))
+  end
+
+  defp line_kcal(_mi, _scale), do: nil
 
   defp scaled?(scale), do: Decimal.compare(scale, Decimal.new(1)) != :eq
 
