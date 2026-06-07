@@ -48,6 +48,9 @@ defmodule GroceryAidWeb.Layouts do
           <li>
             <.link navigate={~p"/ingredients"} class="btn btn-ghost btn-sm">Ingredients</.link>
           </li>
+          <li>
+            <.link navigate={~p"/grocery-items"} class="btn btn-ghost btn-sm">Grocery</.link>
+          </li>
           <li><.link navigate={~p"/stores"} class="btn btn-ghost btn-sm">Stores</.link></li>
           <li>
             <.link navigate={~p"/shopping-list"} class="btn btn-primary btn-sm">

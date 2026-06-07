@@ -22,6 +22,7 @@ defmodule GroceryAidWeb.DashboardLive do
     |> assign(:page_title, "Grocery Aid")
     |> assign(:meal_count, Meals.count_meals())
     |> assign(:ingredient_count, Catalog.count_ingredients())
+    |> assign(:grocery_item_count, Catalog.count_grocery_items())
     |> assign(:store_count, Catalog.count_stores())
     |> assign(:all_tags, Enum.map(Meals.list_tags(), & &1.name))
     |> assign(:tag, "")
@@ -40,13 +41,19 @@ defmodule GroceryAidWeb.DashboardLive do
         </:subtitle>
       </.header>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <.stat_card label="Meals" count={@meal_count} href={~p"/meals"} icon="hero-cake" />
         <.stat_card
           label="Ingredients"
           count={@ingredient_count}
           href={~p"/ingredients"}
           icon="hero-beaker"
+        />
+        <.stat_card
+          label="Grocery items"
+          count={@grocery_item_count}
+          href={~p"/grocery-items"}
+          icon="hero-shopping-bag"
         />
         <.stat_card
           label="Stores"

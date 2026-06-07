@@ -308,4 +308,34 @@ defmodule GroceryAid.Catalog do
   def change_store_item(%StoreItem{} = store_item, attrs \\ %{}) do
     StoreItem.changeset(store_item, attrs)
   end
+
+  ## Grocery items (standalone non-recipe items: cookies, cereal, ...) --------
+
+  alias GroceryAid.Catalog.GroceryItem
+
+  def list_grocery_items do
+    GroceryItem |> order_by(asc: :name) |> preload(:preferred_store) |> Repo.all()
+  end
+
+  def count_grocery_items, do: Repo.aggregate(GroceryItem, :count)
+
+  def get_grocery_item!(id), do: GroceryItem |> Repo.get!(id) |> Repo.preload(:preferred_store)
+
+  def create_grocery_item(attrs) do
+    %GroceryItem{}
+    |> GroceryItem.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_grocery_item(%GroceryItem{} = grocery_item, attrs) do
+    grocery_item
+    |> GroceryItem.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def delete_grocery_item(%GroceryItem{} = grocery_item), do: Repo.delete(grocery_item)
+
+  def change_grocery_item(%GroceryItem{} = grocery_item, attrs \\ %{}) do
+    GroceryItem.changeset(grocery_item, attrs)
+  end
 end
