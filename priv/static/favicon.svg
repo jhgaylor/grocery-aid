@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="GroceryAid">
+  <defs>
+    <linearGradient id="bag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399" />
+      <stop offset="1" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <!-- bag handles -->
+  <path d="M11 11V9a5 5 0 0 1 10 0v2"
+        fill="none" stroke="#047857" stroke-width="2.4" stroke-linecap="round" />
+  <!-- bag body -->
+  <path d="M6.5 11h19l-1.4 16.2a2.5 2.5 0 0 1-2.5 2.3H10.4a2.5 2.5 0 0 1-2.5-2.3L6.5 11Z"
+        fill="url(#bag)" />
+  <!-- aid plus -->
+  <path d="M16 15.5v8M12 19.5h8"
+        fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" />
+</svg>
