@@ -4,9 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <link rel="icon" href={~p"/favicon.svg"} type="image/svg+xml" />
-    <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
-    <link rel="apple-touch-icon" href={~p"/favicon.svg"} />
+    <%!-- literal paths, not ~p: ~p digests to /favicon-HASH.svg, which Plug.Static's
+          exact-match `only: static_paths()` refuses to serve (404). Root-level static
+          files must be requested by their listed name. --%>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <.live_title default="GroceryAid" suffix=" · Phoenix Framework">
       {assigns[:page_title]}
     </.live_title>
