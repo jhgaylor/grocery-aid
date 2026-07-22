@@ -8,7 +8,6 @@ resources:
   # authenticates with the SOPS-encrypted machine-identity creds and
   # materializes the `grocery-aid-app-secrets` Secret (SECRET_KEY_BASE) the
   # Deployment consumes. DATABASE_URL comes from CNPG's `grocery-aid-pg-app`.
-  - grocery-aid-infisical-auth.enc.yaml
   - infisicalsecret.yaml
   - deployment.yaml
   - service.yaml
